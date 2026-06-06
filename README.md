@@ -1,1 +1,1 @@
-# 菜菜的sklearn完整版 课件、pdf 、代码
+# 菜菜的sklearn完整版课件、pdf 、代码
