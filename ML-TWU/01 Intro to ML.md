@@ -140,6 +140,7 @@ Regularization 正则化：在损失函数后添加正则项 $\lambda \sum (w_{i
 
 ---
 ## 分类问题
+### Generative Model
 - Function：$g(x) >0$ 为 Class1；否则为 Class0
 - Loss Function： $L(f) = \sum_{n} \delta(f(x^{n}) \neq \hat{y}^{n})$
 - Solution：从概率角度
@@ -194,10 +195,84 @@ $$
 
 
 ---
-## Logistic Regression
+### Discriminative Model
 $$
 f_{w,b}(x) = \sigma\left( \sum_{i}w_{i}x_{i} + b \right)
 $$
 
 有训练数据 $(x^{n}, \hat{y}^{n})$，假设由 $f_{w,b}(x) = P_{w,b}(C_{1} \mid x)$ 产生，则可以计算产生该训练数据的概率
-- 若 $\hat{y}^{i} = C_{1}$，概率为
+- 若 $x^{i}$ 的类别为 $C_{1}$，采样概率为 $P_{i} = f_{w,b}(x^{i})$
+- 若 $x^{i}$ 的类别不为 $C_{1}$，采样概率为 $P_{i} = 1 - f_{w,b}(x^{i})$
+
+定义 $L(w,b) = \prod_{i}P_{i}$，则可以找到一组最佳参数使得
+$$
+\begin{align}
+w^{*}, b^{*}  & = \arg \max _{w,b} L(w,b)  \\
+ & = \arg \min _{w,b} - \ln  L(w,b) \\
+ & = \arg \min _{w,b} -\sum_{i} \ln  P_{i}
+\end{align}
+$$
+
+对于求和的每一项，可以写成统一的形式：当 $x^{i}$ 属于 $C_{1}$ 时，令 $\hat{y}^{i} = 1$，否则为 0。因此有： 
+$$
+\ln P_{i} = \hat{y}^{i}\ln f_{w,b}(x^{i}) + (1 - \hat{y}^{i})\ln (1 - f_{w,b}(x^{i}))
+$$
+称为 **Cross Entropy**。
+
+
+因此逻辑回归中的损失函数为将 Output 和 Target 分别当作一个 Bernoulli 分布，计算两者的接近程度（和Cross Entropy 相关）
+$$
+L(f) = \sum_{n} C(f(x^{n}, \hat{y}^{n}))
+$$
+其中
+$$
+C(f(x^{n}), \hat{y}^{n}) = - [\hat{y}^{n} \ln  f(x^{n}) + (1 - \hat{y}^{n})\ln (1 - f(x^{n}))]
+$$
+
+求微分：
+$$
+\frac{ \partial - \ln  L(w,b) }{ \partial w_{i} } = \sum_{n} - \left[  \hat{y}^{n} \frac{ \partial \ln  f_{w,b}(x^{n}) }{ \partial w_{i} }  + (1 - \hat{y}^{n})\frac{ \partial \ln (1 - f_{w,b}(x^{n})) }{ \partial w_{i} } \right] 
+$$
+已知：
+- $f_{w,b}(x) = \sigma(z)$
+- $z = w \cdot x + b$
+
+因此结果为
+$$
+\begin{align}
+\frac{ \partial - \ln  L(w,b) }{ \partial w_{i} } &  =\sum_{n} - [\hat{y}^{n}(1 - f_{w,b}(x^{n}))x^{n}_{i} + (1 - \hat{y}^{n})f_{w,b}(x^{n})x_{i}^{n}] \\
+ & = \sum_{n} -(\hat{y}^{n} - f_{w,b}(x^{n}))x_{i}^{n}
+
+\end{align}
+$$
+
+> [!tip] 为什么不用 Sqaure Error
+> 相比 Cross Entropy，Square Error 的函数曲线更平缓 $\frac{ \partial (f_{w,b}(x) - \hat{y})^{2} }{ \partial w_{i} } = 2(f_{w,b}(x) - \hat{y})f_{w,b}(x)(1 - f_{w,b}(x))x_{i}$
+> 不管是接近 Target 还是远离 Target，微分的值都会很小
+
+
+
+计算 Logistic 回归的两种不同模型
+- Discriminative：根据损失函数计算 $w$ 和 $b$
+- Generative：学习数据的分布，计算 $\mu$ 和 $\Sigma^{-1}$，从而计算 $w$ 和 $b$
+
+两者所计算出的最佳参数是不同的，Generative 模型基于一些假设，认为数据来自一个概率模型，训练数据是来自该概率模型的，并且有一些统计上的假设，如 Gaussian 分布、Naive Bayes 性质等。而 Discriminative 模型中没有任何限制，仅根据函数的特征寻找最佳的参数。
+
+
+通常 Discriminative 模型的表现会比 Generative 的更好，有些情况下 Generative 模型具有优势：
+- Discriminative 模型受数据量的影响大。而 Generative 模型基于概率假设，需要的数据量更少
+- 先验 $P(C)$ 和条件概率 $P(x \mid C)$ 可以分开计算，从不同的数据来源计算得到更精确的结果
+
+### Multi-class Classification
+假设有 N 个 Class $C_{i}$，分别有参数 $w_{i}, b_{i}$，对于输入 $x$，计算 $z_{i} = w_{i} \cdot x + b_{i}$ 。对所有 $z_{i}$ 做 softmax 得到 $y_{i} = P(C_{i} \mid x)$
+
+对于损失函数，可以计算 y 和 $\hat{y}$ 之间的 Cross Entropy：
+$$
+ - \sum_{i} \hat{y}_{i} \ln  y_{i}
+$$
+其中，若 $x$ 属于 Class i，则 $\hat{y}[i] = 1$
+
+
+### Limitation
+Logistic Regression 只能处理线性可分的数据，决策面是线性的。有时可以通过 Feature Transformation 将数据变成线性可分的，但需要手动根据数据的分布特征确定，更常用的方法是 Cascading logistic regression model：通过若干个 Logistic Regression （Sigmoid 函数）得到的值【此过程实现了 Feature Transformation】通过一个 Logistic Regression 得到结果
+
