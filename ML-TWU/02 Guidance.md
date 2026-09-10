@@ -32,3 +32,58 @@
 > ![[image-1.webp|400]]
 > 真实训练一个网络到收敛时，其 Hessian 中正特征值的占比(minimum ratio)几乎不为 1，大多在 0.4~0.5 附近，表明收敛往往是处于 saddle point
 
+
+---
+### Batch 与 Momentum
+![[image-2.webp]]
+虽然 batch 越大，一个 update 内所耗费的时间越多，但是在一定量的 batch 内所耗费的时间相差不大（GPU 并行计算），而一个 epoch 内需要的 updates 更多，两个因素叠加之下，反而 batch 非常小时一个 epoch 所需的总时间越大。
+
+
+![[image-3.webp]] 
+当 batch 增加时，Training 和 Validation 上的准确率同时降低的原因：**优化不足**
+
+大 batch 和小 batch 的对比：
+![[image-4.webp]]
+
+---
+起始点 $\theta^{0}$，初始移动方向 $m^{0} = 0$，初始梯度信息 $g^{0}$，
+- 移动方向 $m^{1} = \lambda m^{0} - \eta g^{0}$
+- 新解 $\theta^{1} = \theta^{0} + m^{1}$
+- 计算 $g^{1}$，$m^{2} = \lambda m^{1} - \eta g^{1}$
+- $\theta^{2} = \theta^{1} + m^{2}$
+
+对每个前进方向展开，可得历史的梯度信息权重按指数衰减
+- $m^{0} = 0$
+- $m^{1} = - \eta g^{0}$
+- $m^{2} = - \lambda \eta g^{0} - \eta g^{1}$
+
+### Learning rate
+Loss 不再下降的原因是什么？梯度是否真的为 0？
+
+自适应调整步长的方法：
+
+**Adagrad**：
+$$
+\theta_{i}^{t+1} \leftarrow \theta_{i}^{t} - \frac{\eta}{\sigma_{i}^{t}} g^{t}_{i}
+$$
+其中
+$$
+\sigma_{i}^{t} = \sqrt{ \frac{1}{t+1}\sum_{i=0}^{t}(g_{i}^{t})^{2} }
+$$
+
+**RMSProp**：
+$$
+\sigma_{i}^{t} = \sqrt{ \alpha (\sigma_{i}^{t-1})^{2} + (1 - \alpha)(g_{i}^{t})^{2} }
+$$
+调整 $\alpha$ 的值，当 $\alpha$ 接近 0 时，当前的 $\sigma$ 受到当前梯度影响更大，对梯度变化的响应更快。
+
+
+**Adam**：RMSProp + Momentum
+
+#### Learning Rate Scheduling
+- Learning Rate Decay：学习率随时间变小
+- Warm Up：开始线性增加，之后逐渐减小
+
+### Loss
+相较于 MSE，Cross-entropy 更常用与分类问题，`torch` 中 Cross-entropy 和 softmax 绑定
+
