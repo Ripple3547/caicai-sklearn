@@ -19,10 +19,35 @@ Receptive field 和参数共享叠加称为 Convolutional Layer。对应的网�
 
 ---
 ### 第二种思路
-图像经过一个 Convolutional Layer 操作，其中包含若干个 Filter，每个 Filter 的尺寸为 3⨉3⨉Channel（对于彩图为 3，对于黑白图为 1）。
+图像经过一个 Convolutional Layer 操作，其中包含若干个 Filter，每个 Filter 的尺寸为 3⨉3⨉Channel（对于彩图为 3，对于黑白图为 1），每个 Filter 是一个 Tensor。卷积后的图像称为一个 Feature map，包含多个 Channel，数量等于 Filter 的个数。
+
+在下一层的 Convolutional Layer 中，每个 Filter 的 Channel 数和上一层处理后的图片的 Channel 数相同
+![[image-8.webp]]
+
 
 对于每个 Filter，在图像上移动，步长为 Stride，
 
 
+
+
 ![[image-7.webp]]
 为了简便起见，假定每个 Receptive field 的尺寸为 `1⨉Kernel_size`（即不考虑长度）。对于当前 Feature map 上的 Receptive field $r_{n}$，经过下一层的 Convolution Filter $n+1$ 的卷积操作，卷积核 $k_{n+1} = k, s_{n+1} = s$，因此下一层的每个卷积核会包含当前层的 $k$ 个 Receptive field，则重叠区域有 $k-1$ 个，重叠区域的大小为当前层的 Receptive field $r_{n}$ 减去总共积累的 Stride $\prod_{i=1} ^{n} s_{i}$
+
+
+### Pooling--Max Pooling
+Pooling 操作由一个固定形状的窗口参与，其在输入图像上滑动遍历每个位置，根据 Pooling 类型确定每个位置处窗口的输出值，通常有取 `max` 或 `mean` 两种。
+
+通过 Pooling 后，图像的 Channel 不变，而尺寸缩小，因此 Pooling 操作后模型可能丢失对微小细节的捕捉。
+
+
+在经过若干次 Colvolution-Pooling 后，输出结果 Flatten 连接全连接网络，最后可以做 Softmax 得到结果
+![[image-9.webp]]
+
+
+CNN 在下棋中的应用
+- 有小规模的固定范式（small patterns）
+- 出现的位置不固定
+- 不建议做 Pooling，会导致细节的丢失
+
+---
+CNN 无法处理旋转和拉伸后的图形，除非训练数据中有相关的样本。对输入图像或 Feature map 使用 Spatial Transformer Layer 进行变换

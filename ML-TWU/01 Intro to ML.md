@@ -276,3 +276,5 @@ $$
 ### Limitation
 Logistic Regression 只能处理线性可分的数据，决策面是线性的。有时可以通过 Feature Transformation 将数据变成线性可分的，但需要手动根据数据的分布特征确定，更常用的方法是 Cascading logistic regression model：通过若干个 Logistic Regression （Sigmoid 函数）得到的值【此过程实现了 Feature Transformation】通过一个 Logistic Regression 得到结果
 
+
+deep learning 的核心是通过增加 Hidden Layer ，达到比单个 Hidden Layer **更少的参数量**和更好的效果，需要更少的训练数据，从而不容易 Overfitting。
