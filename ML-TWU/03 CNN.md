@@ -50,4 +50,46 @@ CNN 在下棋中的应用
 - 不建议做 Pooling，会导致细节的丢失
 
 ---
-CNN 无法处理旋转和拉伸后的图形，除非训练数据中有相关的样本。对输入图像或 Feature map 使用 Spatial Transformer Layer 进行变换
+CNN 无法处理旋转和拉伸后的图形，除非训练数据中有相关的样本。对输入图像或 Feature map 使用 Spatial Transformer Layer 进行变换。
+
+实际上两个 Layer 之间元素的关系可以描述为新 Layer 中的元素通过原始 Layer 所有元素的线性组合得到：
+$$
+a_{nm}^{l} = \sum_{i=1}^{N} \sum_{j=1}^{N} w_{nm, ij}^{l} a_{ij}^{l-1}
+$$
+
+而对于仿射变换，有更简洁的方式
+$$
+\begin{bmatrix}
+x' \\
+y'
+\end{bmatrix} = \begin{bmatrix}
+a & b \\
+c & d
+\end{bmatrix} \begin{bmatrix}
+x \\
+y
+\end{bmatrix} + \begin{bmatrix}
+e \\
+f
+\end{bmatrix}
+$$
+通过 6 个参数就能描述一个旋转/平移/缩放操作。
+
+![[image-10.webp]]
+
+
+从直观来看，仿射变换的参数应该从前一层映射到下一层得到，但是为了防止下一层中有部分元素没有前一层输入对应，更好的做法是通过下一层元素反推。即确立从下一层到前一层的映射关系。
+
+
+
+计算得到的前一层坐标并不一定是整数，可以进行四舍五入处理，但此时又引入了一个问题：参数的微小变化可能不会影响四舍五入的结果，此时梯度下降方法就失效了。实际上更好的方法是通过双线性插值：
+若下一层 l 中坐标 $\begin{bmatrix}2 & 2\end{bmatrix}^{\top}$ 通过仿射变换得到前一层的坐标为 $\begin{bmatrix}1.6, 2.4\end{bmatrix}^{\top}$，则有如下的关系
+$$
+\begin{align}
+a_{22}^{l}  & = (1 - 0.4) \times(1 - 0.4) a_{22}^{l-1} \\
+ & + (1 - 0.6)\times  (1 - 0.4) a_{12}^{l-1} \\
+ & + (1 - 0.6)\times (1 - 0.6) a_{13}^{l-1} \\
+ & + (1 - 0.4)\times (1 - 0.4) a_{23}^{l-1}
+\end{align}
+$$
+![[image-11.webp]]

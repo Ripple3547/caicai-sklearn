@@ -30,3 +30,7 @@ MB = MB<sub>n</sub> + BR
 $$
 m = \frac{1+c}{rr + e + c}
 $$
+
+
+
+信用膨胀螺旋
