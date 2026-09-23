@@ -47,3 +47,18 @@ then use **memory_get** to pull only the needed lines.
 - [Agentic Context Engineering](https://arxiv.org/abs/2510.04618) 
 - 通过 Prompt Engineering 实现 [Dynamic Cheatsheet](https://arxiv.org/abs/2504.07952) 让模型总结当前的上下文，整理出关键内容、可复用的策略等。
 - [Recursive Language Models](https://arxiv.org/abs/2512.24601) 模型不能看到完整的上下文，只能看到其中的摘要信息（Meta Data）根据这些信息调用搜索程序在存储中查找相关的上下文，从而更改 Meta Data。
+
+
+---
+## AI Agent 的互动
+https://arxiv.org/abs/2406.07155
+AI Agent 之间的基本互动单元为模型提出方案，Agent 给出对应的建议，之后转交给下一个模型，模型将接受到的建议整合形成一个新的方案。在总体上，AI Agent 的协作方式有如下的拓扑结构
+- Chain
+- Star(一个 Agent 向其他的所有 Agent 提供信息，放射状)
+- Tree（树状结构，由一个 Agent 提供方案开始）
+- Mesh（两两之间都有相连）
+- Layer（类似全连接神经网络式的连接方式）
+- Random（随机连接，可通过 Mesh 方式进行 Primming 得到）
+
+综合来看，最有效的写作方式为 Mesh 以及 Random。而随着 Agent 规模的增大，任务完成的质量也呈上升趋势，符合 Scaling law 的规律。
+
