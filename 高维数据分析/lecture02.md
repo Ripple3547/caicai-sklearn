@@ -23,7 +23,7 @@ $$
 - $SXY = \sum_{i=1}^{n}(x_{i} - \bar{x})(y_{i} - \bar{y})$
 称
 $$
-\hat{e}_{i} = y_{i} - \beta_{0} - \beta_{1}x_{i}
+\hat{e}_{i} = y_{i} - \hat{\beta}_{0} - \hat{\beta}_{1}x_{i}
 $$
 为残差（**R**esidual）。残差平方和 RSS 为 $f(\hat{\beta}_{0}, \hat{\beta}_{1}) = \sum_{i=1}^{n} \hat{e}_{i}^{2}$ ，因此 $\sigma_{*}^{2}$ 的极大似然估计 $\tilde{\sigma}^{2} = RSS / n$
 
@@ -46,7 +46,7 @@ $\hat{\beta}_{1}$ 的区间估计：
 $$
 G = \frac{\hat{\beta}_{1} - \beta_{1}^{*}}{\mathrm{se}(\hat{\beta}_{1})} \sim t(n-2)
 $$
-假设检验检验 $\beta^{*}_{1}$ 是否等于 $b_{1}$，检验统计量为
+假设检验 $\beta^{*}_{1}$ 是否等于 $b_{1}$，检验统计量为
 $$
 T =\frac{ \hat{\beta}_{1} - b_{1}}{\mathrm{se}(\hat{\beta}_{1})}
 $$
