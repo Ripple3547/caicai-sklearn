@@ -10,7 +10,7 @@
 	-  Mismatch：训练数据和测试数据的分布不一致
 
 
-![[image.webp|323]]
+![[Guidance-01.webp|323]]
 模型的表现随模型复杂度的变化情况，一个合理的模型应该是在可以接受的 Training Loss 范围中选择一个表现好的 Testing Loss。
 
 > [!tip] 如何挑选最适合的模型
@@ -29,21 +29,21 @@
 
 > [!note] Empirical Study
 > 在一些损失函数的一维或二维可视化图中往往会有很多的 local minima 点，但是真实场景中的参数量往往很大，在高维空间的中 error surface 的构造很复杂，往往在某些子维度中会呈现许多的 local minima，但从整体维度来看，真正遇到 local minima 的情况是非常少见的
-> ![[image-1.webp|400]]
+> ![[Guidance-02.webp|400]]
 > 真实训练一个网络到收敛时，其 Hessian 中正特征值的占比(minimum ratio)几乎不为 1，大多在 0.4~0.5 附近，表明收敛往往是处于 saddle point
 
 
 ---
 ### Batch 与 Momentum
-![[image-2.webp]]
+![[Guidance-03.webp]]
 虽然 batch 越大，一个 update 内所耗费的时间越多，但是在一定量的 batch 内所耗费的时间相差不大（GPU 并行计算），而一个 epoch 内需要的 updates 更多，两个因素叠加之下，反而 batch 非常小时一个 epoch 所需的总时间越大。
 
 
-![[image-3.webp]] 
+![[Guidance-04.webp]] 
 当 batch 增加时，Training 和 Validation 上的准确率同时降低的原因：**优化不足**
 
 大 batch 和小 batch 的对比：
-![[image-4.webp]]
+![[Guidance-05.webp]]
 
 ---
 起始点 $\theta^{0}$，初始移动方向 $m^{0} = 0$，初始梯度信息 $g^{0}$，

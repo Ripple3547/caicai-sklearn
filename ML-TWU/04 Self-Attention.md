@@ -47,7 +47,7 @@ Self-Attention 考虑整个 Input Sequence，可以是网络的 Input，也可�
 - 相似度计算：$A = K^{\top}Q$ ，其中每一列为该 Input 和其他向量的相似度（KQ 值），再经过 Softmax 后得到 $A'$，为真正的相似度矩阵
 - 最后计算结果矩阵 $O = V A'$ 
 
-![[image-12.webp]]
+![[Self-Attention-01.webp]]
 在整个模型中，超参数只有 $W^{q},W^{k}, W^{v}$。
 
 ## Multi-head Self-Attention
@@ -56,7 +56,7 @@ Self-Attention 考虑整个 Input Sequence，可以是网络的 Input，也可�
 在原来的模型计算出的 $q^{i}, k^{i}, v^{i}$ 基础上，分别经过若干个矩阵作用得到多个 head 的 q,k,v。如设定 head = 2，则根据 $a^{1}$ 计算出 $q^{1}$ 后，经过两个不同的矩阵计算出 $q^{1,1}$ 和 $q^{1,2}$，其他同理。
 
 在计算输出矩阵 $O$ 时，按照每个 head 分别计算。例如，对当前的 Input $i$，Head 共 2 个，对应的 Query 有两个 $q^{i,1}$ 和 $q^{i,2}$，在计算相应的 k 和 v 后得到 $b^{i,1}$ 和 $b^{i,2}$，此时经过 $W^{O}$ 后得到最终 $i$ 对应的输出 $b^{i}$。
-![[image-13.webp]]
+![[Self-Attention-02.webp]]
 
 
 ### Self-Attention 的缺点——Positional Encoding
@@ -79,7 +79,7 @@ https://arxiv.org/abs/1911.03584
 
 ### Self-Attention v.s. RNN
 RNN 只考虑当前输入和其之前的输入，且只能**串行**计算，因此当输入序列较长时，当前的输出结果容易遗忘相隔较远的输入。
-![[image-14.webp]]
+![[Self-Attention-03.webp]]
 
 
 ---

@@ -17,7 +17,7 @@ Slot 为：
 
 ### RNN
 RNN 的处理方法为：每次隐藏层的输出会暂存到 Memory 中，下一个 Input 会同时引入 Memory 中的内容作为考虑作为隐藏层的输入
-![[image-16.webp]]
+![[To Learn More-01.webp]]
 
 不同的 Memory 定义方式：
 - Elman Network：即将隐藏层的输出存入 Memory 中
@@ -32,7 +32,7 @@ LSTM 有一个 Momery Cell，用于存放其他 Network 的输出结果。LSTM �
 - Input Gate：用于决定是否存入 Memory Cell
 - Output Gate：用于决定是否外界是否可读 Memory Cell 中的内容
 - Forget Cell：何时遗忘 Memory Cell 中的内容
-![[image-17.webp]]
+![[To Learn More-02.webp]]
 更规范的表达方式：
 - 输入 $z_{i}, z_{f}, z_{o}$ 和 $z$
 - 所有的激活函数都为 Sigmoid
@@ -44,13 +44,13 @@ LSTM 有一个 Momery Cell，用于存放其他 Network 的输出结果。LSTM �
 整个 LSTM 单元可以当作一个神经元节点，其 4 个输入可由输入序列通过不同的变换得到，因此 LSTM 的参数量会是普通简单神经网络的 4 倍。
 
 ---
-![[image-18.webp]]
+![[To Learn More-03.webp]]
 在完整的 LSTM 中，控制 Gate 的不止 Input，还有隐藏层的输出 $h^{t}$ 和 Memory Cell 中的值 $c^{t}$
 
 
 
 ---
-![[image-19.webp]]
+![[To Learn More-04.webp]]
 在训练 RNN 的过程中，Loss 的变化曲线往往不是呈下降趋势的，具有非常大的波动性。根源在于 RNN 中同一个参数会在一个时间序列上被反复使用，使得参数带来的影响呈现指数增长趋势（就如 $0.99^{999}$ 和 $1.01^{999}$ 的区别），因此 Error Surface 的形状变化非常大，有时 Loss 会小幅变化，有时的梯度变得非常大，而 $\alpha$ 没有得到调整，导致迭代距离过远，Loss 大幅波动。
 
 LSTM 可以用于解决 RNN 中的梯度消失问题（无法解决梯度爆炸），让 Error surface 不会出现变化非常小的部分

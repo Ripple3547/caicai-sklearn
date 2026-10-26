@@ -13,7 +13,7 @@
 
 
 共享策略：两个 Receptive field 各自对应的所有 Neuron 共享参数。一组被共享的参数称为 filter.
-![[image-5.webp]]
+![[CNN-01.webp]]
 Receptive field 和参数共享叠加称为 Convolutional Layer。对应的网络称为 Convolutional Neural Network.
 
 
@@ -22,7 +22,7 @@ Receptive field 和参数共享叠加称为 Convolutional Layer。对应的网�
 图像经过一个 Convolutional Layer 操作，其中包含若干个 Filter，每个 Filter 的尺寸为 3⨉3⨉Channel（对于彩图为 3，对于黑白图为 1），每个 Filter 是一个 Tensor。卷积后的图像称为一个 Feature map，包含多个 Channel，数量等于 Filter 的个数。
 
 在下一层的 Convolutional Layer 中，每个 Filter 的 Channel 数和上一层处理后的图片的 Channel 数相同
-![[image-8.webp]]
+![[CNN-02.webp]]
 
 
 对于每个 Filter，在图像上移动，步长为 Stride，
@@ -30,7 +30,7 @@ Receptive field 和参数共享叠加称为 Convolutional Layer。对应的网�
 
 
 
-![[image-7.webp]]
+![[CNN-03.webp]]
 为了简便起见，假定每个 Receptive field 的尺寸为 `1⨉Kernel_size`（即不考虑长度）。对于当前 Feature map 上的 Receptive field $r_{n}$，经过下一层的 Convolution Filter $n+1$ 的卷积操作，卷积核 $k_{n+1} = k, s_{n+1} = s$，因此下一层的每个卷积核会包含当前层的 $k$ 个 Receptive field，则重叠区域有 $k-1$ 个，重叠区域的大小为当前层的 Receptive field $r_{n}$ 减去总共积累的 Stride $\prod_{i=1} ^{n} s_{i}$
 
 
@@ -41,7 +41,7 @@ Pooling 操作由一个固定形状的窗口参与，其在输入图像上滑动
 
 
 在经过若干次 Colvolution-Pooling 后，输出结果 Flatten 连接全连接网络，最后可以做 Softmax 得到结果
-![[image-9.webp]]
+![[CNN-04.webp]]
 
 
 CNN 在下棋中的应用
@@ -75,7 +75,7 @@ f
 $$
 通过 6 个参数就能描述一个旋转/平移/缩放操作。
 
-![[image-10.webp]]
+![[CNN-05.webp]]
 
 
 从直观来看，仿射变换的参数应该从前一层映射到下一层得到，但是为了防止下一层中有部分元素没有前一层输入对应，更好的做法是通过下一层元素反推。即确立从下一层到前一层的映射关系。
@@ -92,4 +92,4 @@ a_{22}^{l}  & = (1 - 0.4) \times(1 - 0.4) a_{22}^{l-1} \\
  & + (1 - 0.4)\times (1 - 0.4) a_{23}^{l-1}
 \end{align}
 $$
-![[image-11.webp]]
+![[CNN-06.webp]]
