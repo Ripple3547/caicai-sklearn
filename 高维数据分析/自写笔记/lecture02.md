@@ -39,7 +39,7 @@ $$
 
 标准误：
 - $\mathrm{se}(\hat{\beta}_{1}) = \sqrt{ \hat{Var}(\hat{\beta}_{1}) } = \frac{\hat{\sigma}}{\sqrt{ SXX }}$
-- $\mathrm{se}(\hat{\beta}_{1}) = \sqrt{ \hat{Var}(\hat{\beta}_{0}) } = \hat{\sigma} \sqrt{ \frac{1}{n} + \frac{\bar{x}^{2}}{SXX} }$
+- $\mathrm{se}(\hat{\beta}_{0}) = \sqrt{ \hat{Var}(\hat{\beta}_{0}) } = \hat{\sigma} \sqrt{ \frac{1}{n} + \frac{\bar{x}^{2}}{SXX} }$
 
 
 $\hat{\beta}_{1}$ 的区间估计：
