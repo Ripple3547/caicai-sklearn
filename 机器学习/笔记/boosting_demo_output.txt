@@ -1,1 +1,112 @@
-E:/SUFE/junior/term1/机器学习/笔记/boosting_demo_output.txt
+============================================================
+1. 指数损失 c(y, f(x)) = exp(-y f(x)), y in {-1,+1}
+   f=+3 时: 正确(1)代价 e^-3=0.0498, 错误(-1)代价 e^3=20.1
+   f=+1 时: 正确代价 0.3679, 错误代价 2.7
+   f=0  时: 两者代价均为 1.0 (完全不确定)
+   => 指数损失对错分样本施加指数级惩罚 => 后续基学习器重点修正
+
+  --- 第 1 轮 ---
+   加权错误率 err_m = 0.5000
+   alpha_m = 0.5*ln((1-err)/err) = 0.0000
+   更新前权重: [0.5 0.5]
+   更新后权重: [0.5 0.5]
+
+  --- 第 2 轮 ---
+   加权错误率 err_m = 0.5000
+   alpha_m = 0.5*ln((1-err)/err) = 0.0000
+   更新前权重: [0.5 0.5]
+   更新后权重: [0.5 0.5]
+
+  --- 第 3 轮 ---
+   加权错误率 err_m = 0.0000
+   alpha_m = 0.5*ln((1-err)/err) = 18.4207
+   更新前权重: [0.5 0.5]
+   更新后权重: [0.5 0.5]
+============================================================
+2. AdaBoost(stumps) on make_moons, n=500
+   M=  1  train_acc=0.8686  test_acc=0.8800
+   M=  5  train_acc=0.8686  test_acc=0.8800
+   M= 10  train_acc=0.8686  test_acc=0.8800
+   M= 50  train_acc=0.8829  test_acc=0.8733
+   M=100  train_acc=0.8829  test_acc=0.8733
+   M=300  train_acc=0.8800  test_acc=0.8533
+============================================================
+3. AdaBoost 基学习器深度 (n_estimators=200)
+   max_depth=1  train=0.8800  test=0.8533
+   max_depth=2  train=0.9857  test=0.8733
+   max_depth=3  train=1.0000  test=0.9000
+   max_depth=5  train=1.0000  test=0.8867
+============================================================
+4. 前向分步(forward stagewise)指数损失 AdaBoost vs. 整体优化:
+   sklearn 的 AdaBoost 采用 SAMME/SAMME.R(前向分步),
+   每一轮只优化当前加权误差 e^{-alpha*m}, 不解全局凸问题。
+============================================================
+5. GradientBoostingRegressor on Friedman#1 (n=1000, noise sd=1)
+
+   a) 学习率 vs 迭代次数 (max_depth=3), 报告 test RMSE:
+      lr       M=10  M=50  M=100  M=300  M=500  M=1000
+      0.1      3.384  1.997  1.710  1.569  1.560  1.567
+      0.05     3.988  2.522  2.011  1.629  1.584  1.561
+      0.01     4.714  3.993  3.406  2.365  2.028  1.695
+
+   b) staged prediction: 观测训练误差如何逐轮下降 (lr=0.1, M=1000)
+      M=  1  train_MSE=22.0926  test_MSE=22.1615
+      M=  2  train_MSE=19.5596  test_MSE=20.0013
+      M=  5  train_MSE=14.4011  test_MSE=15.7248
+      M= 10  train_MSE=9.4624  test_MSE=11.4517
+      M= 25  train_MSE=3.8788  test_MSE=6.1872
+      M= 50  train_MSE=1.7215  test_MSE=3.9887
+      M=100  train_MSE=0.8683  test_MSE=2.9224
+      M=200  train_MSE=0.4167  test_MSE=2.5848
+      M=400  train_MSE=0.1338  test_MSE=2.4464
+      M=700  train_MSE=0.0307  test_MSE=2.4381
+      M=1000  train_MSE=0.0078  test_MSE=2.4563
+      不可约噪声方差 = 1.0 => 测试 MSE 的下限附近 ~1.0
+
+   c) 各特征重要性 (前 6):
+      X4 : 0.3820
+      X2 : 0.2105
+      X1 : 0.2054
+      X5 : 0.0970
+      X3 : 0.0825
+      X6 : 0.0052
+      (真实信号特征: X1..X5; X6..X10 应为噪声, 重要性接近 0)
+============================================================
+6. shrinkage 权衡: lr=0.01 需要更多轮才能收敛
+      lr=0.10 M= 200 -> test_MSE=2.5848
+      lr=0.02 M=1000 -> test_MSE=2.4556
+      lr=0.01 M=2000 -> test_MSE=2.4105
+============================================================
+7. subsample (随机梯度提升), lr=0.05, M=500, max_depth=3
+      subsample=1.0  train_MSE=0.3132  test_MSE=2.5100
+      subsample=0.5  train_MSE=0.2936  test_MSE=2.4229
+      subsample=0.3  train_MSE=0.3566  test_MSE=2.1501
+============================================================
+8. GradientBoostingClassifier on moons, deviance 与 accuracy
+      M= 10  train_ll=0.3506  test_ll=0.3650  test_acc=0.9000
+      M= 50  train_ll=0.2093  test_ll=0.2807  test_acc=0.8867
+      M=100  train_ll=0.1498  test_ll=0.3051  test_acc=0.9000
+      M=200  train_ll=0.0839  test_ll=0.3132  test_acc=0.9067
+      M=500  train_ll=0.0223  test_ll=0.4001  test_acc=0.8867
+
+   Bernoulli 对数损失 = 交叉熵; 梯度为 (y - p), 残差形式:
+   对 p=0.3, y=1: 负梯度 = 1-0.3 = 0.7 (下一轮基学习器拟合该残差)
+   对 p=0.3, y=0: 负梯度 = -0.3
+============================================================
+9. AdaBoost 多分类 (SAMME) on digits (10 类, p=64)
+      M= 10  train=0.8690  test=0.8194
+      M= 50  train=0.9881  test=0.9630
+      M=100  train=0.9960  test=0.9583
+      M=200  train=0.9960  test=0.9630
+      (sklearn 1.8 已移除 SAMME.R; 现版本默认 SAMME)  test=0.9907
+============================================================
+10. Boosting 也可能过拟合(深度大+噪声): max_depth=5
+      M= 10 train=1.0000 test=0.7111
+      M= 30 train=1.0000 test=0.7556
+      M= 50 train=1.0000 test=0.7000
+      M=100 train=1.0000 test=0.7000
+      M=200 train=1.0000 test=0.7111
+      M=400 train=1.0000 test=0.7222
+   => 对噪声数据, 后期训练误差到 1.0 而测试误差上升 => 早停(early stopping)
+
+图片已保存: boosting_figures.png
