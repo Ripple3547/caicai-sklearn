@@ -190,6 +190,7 @@ z = torch.Tensor([[0.2, 0.1, -0.1]])
 criterion = torch.nn.CrossEntropyLoss()
 loss = criterion(z, y)
 ```
+这里 `target` 是一维的，为**类别索引模式**（最常用）：`target` 形状比 `input` 少一维（例如 `input` 是 `(N, C)`，`target` 是 `(N,)`）。此时每个值是一个整数，表示该样本属于第几类。官方文档明确规定，这种模式下 `target` **的数据类型必须是** `long` （PyTorch 是预编译的，为了控制库的体积，官方没有为所有整数类型都实现损失函数的内核）。
 
 ![[深入理解pytorch-02.webp]]
 
@@ -220,6 +221,8 @@ test_dataset = datasets.MNIST(root='../dataset/mnist/', train=False, download=Tr
 test_loader = DataLoader(test_dataset, shuffle=False, batch_size=batch_size)
 ```
 - `transform` 定义了对原始数据的处理方式，具体为先转为 Tensor，后进行标准化
+	- 神经网络偏好符合正态分布的数据，原始图像为灰度表示，范围为 $\{ 0, \cdots, 255 \}$，需要转换成图像张量，范围为 $[0, 1]$。
+	- 对于多通道的 RGB 图像，一般的尺寸为 `(w, h, c)`，而在 pytorch 中变成 `(c, w, h)` 处理更高效。
 - dataset 定义中 `transform=transform` 指定了数据经过什么处理变为真正可用的数据集。
 - loader 让 dataset 可以变成分 batch 训练的形式
 
@@ -317,6 +320,16 @@ detach 是张量级的梯度截断器，专治“同一段计算里一部分需�
 
 
 
+### CrossEntropyLoss 和 LogSoftMax 以及 NLLLoss 的关系
+定义：
+- LogSoftMax：把 logits 经过 softmax 后再取 log 后的结果，公式为： $\mathrm{log\_softmax}(z)_{i} = \log \left( \frac{e^{z_{i}}}{\sum_{j} e^{z_{j}}} \right) = z_{i} - \log \sum_{j} e^{z_{j}}$，特点：每个值不为正。
+- NLLLoss（Negative Log Likelihood Loss）：按每个样本在正式类别上的对数概率求和，公式为 $\mathrm{NLLLoss} = - \frac{1}{N}\sum_{n=1}^{N} \log p_{n, y_{n}}$ 其中 $y_{n}$ 是第 n 个样本的真实标签索引，因此每一项都是该样本真实标签的对数概率
+- CrossEntropyLoss：公式为 $\mathrm{C E} = - \frac{1}{N} \sum_{n=1}^{N} \log(\mathrm{soft max}(z_{n})_{y_{n}}) = - \frac{1}{N}\sum_{n=1}^{N}\left[ z_{n,y_{n}} - \log \sum_{j} e^{z_{n, j}} \right]$ 
+
+因此三者关系为
+$$
+\mathrm{CrossEntropyLoss} = \mathrm{LogSoftmax} +\mathrm{ NLLLoss}
+$$
 
 ## CNN
 输入张量的形状为 `width, height, channel`，若 `channel=n`，则卷积核个数为 `n` ，常见的卷积核尺寸为 `(3,3,n)`。每个卷积核在输入上滑动，计算局部区域和卷积核权重的点积，产生一个二维的 feature map。所有卷积核生成的 feature map 叠加，作为当前卷积层的输出，通道数为卷积核个数 `K`。
@@ -334,3 +347,149 @@ H_{out} = \left\lfloor \frac{H_{in} + 2 \times \text{padding} - \text{kernel\_si
 $$
 - `padding=1` 外层补一层 0，通常可以配合 `stride=1` 来保证输出特征图和输入的尺寸保持一致。
 - `stride` 表示步幅，包括上下左右的方向，注意不能只认为是横向上的幅度
+
+
+`torch.nn.Conv2d` 调用时的参数顺序为 $(N, C_{\text{in}}, H, W)$ 
+- $N$ 是 batch size
+- $C_{in}$ 表示输入的通道数
+
+详细的类构造声明为
+```py
+class torch.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros', device=None, dtype=None)[source]
+```
+
+
+### 下采样
+通常的下采样方法是 MaxPooling，每个区域内取最大值得到输出。大小为 `(2,2)` 的层，通常步长会设为 2，因此输出的大小会减半。
+
+### 模型设计
+原始输入经过若干个 Conv2d 层、ReLU 层、Pooling 层后把最终的张量展平为一维的向量，在经过一个线性层，让输出维度为和分类数对齐，从而通过交叉熵进行训练。
+
+
+### 更换计算设备
+更换计算设备需要对模型和张量都进行移动操作：
+```py
+model = Net()
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model.to(device)
+```
+
+inputs 和 targets 迁移
+```py
+inputs, target = inputs.to(device), target.to(device)
+```
+
+
+## CNN 进阶
+### Google Net
+#### 1×1 卷积
+主要实现的是在不改变图像尺寸情况下，实现通道数的改变，从而减少计算压力。
+
+1×1 卷积层每个卷积尺寸为 `(C_in, 1, 1)`，总共的卷积核个数为 $N$，因此输出结果的通道数为 $N$。经过1×1 卷积层，图像的尺寸不变，而通道数从 `C_in` 变为 $N$，同时由于卷积核为 `(1, 1)` 的大小，输出中每个位置都只包含输入中**相同位置**的信息，即**信息融合**
+
+#### Inception
+每个 Inception 由若干个分支构成
+##### 1
+第一个分支先后经过一个 `Average Pooling` 和 `1x1 Conv`。
+- `Average Pooling`：`kernel_size=3, padding=1, stride=1`，因此输入和输出的大小一致。没有权重，因此可以复用。
+- `1x1 Conv`：参数为输入通道数，输出通道数为 `24`。
+
+```py
+# __init__
+self.branch_pool = nn.Conv2d(in_channels, 24, kernel_size=1)
+
+# forward
+branch_pool = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1)
+branch_pool = self.branch_pool(branch_pool)
+```
+
+##### 2
+由单独的 `1x1 Conv` 构成。输出通道数为 `16`。
+
+
+##### 3
+由两个卷积层构成：
+1. `1x1 Conv`，输出通道数为 `16`。
+2. `5x5 Conv`，输出通道数为 `24`。注意 `padding=2` 从而保持尺寸不变。
+
+##### 4
+由 3 个卷积层构成：
+1. `1x1 Conv` 输出通道为 `16`。
+2. `3x3 Conv` 输出通道为 `24`.
+3. `3x3 Conv` 输出通道为 `24`。
+
+
+##### Concatenate
+将 4 个分支的张量拼接（沿着通道维度依次叠加）
+```py
+outputs = [branch1x1, branch5x5, branch3x3, branch_pool]
+return torch.cat(outputs, dim=1)
+```
+
+据此，以下是单个 Interception 模块的定义
+```py
+class InceptionA(nn.Module):
+	def __init__(self, in_channels):
+		super(InceptionA, self).__init__()
+		self.branch1x1 = nn.Conv2d(in_channels, 16, kernel_size=1)
+		
+		self.branch5x5_1 = nn.Conv2d(in_channels,16, kernel_size=1)
+		self.branch5x5_2 = nn.Conv2d(16, 24, kernel_size=5, padding=2)
+		
+		self.branch3x3_1 = nn.Conv2d(in_channels, 16, kernel_size=1)
+		self.branch3x3_2 = nn.Conv2d(16, 24, kernel_size=3, padding=1)
+		self.branch3x3_3 = nn.Conv2d(24, 24, kernel_size=3, padding=1)
+		
+		self.branch_pool = nn.Conv2d(in_channels, 24, kernel_size=1)
+	def forward(self, x):
+		branch1x1 = self.branch1x1(x)
+		
+		branch5x5 = self.branch5x5_1(x)
+		branch5x5 = self.branch5x5_2(branch5x5)
+		
+		branch3x3 = self.branch3x3_1(x)
+		branch3x3 = self.branch3x3_2(branch3x3)
+		branch3x3 = self.branch3x3_3(branch3x3)
+		
+		branch_pool = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1)
+		branch_pool = self.branch_pool(branch_pool)
+		
+		outputs = [branch1x1, branch5x5, branch3x3, branch_pool]
+		return torch.cat(outputs, dim=1)
+```
+
+
+---
+以下网络引入了两个 Interception 模块：
+```py
+class Net(nn.Module):
+	def __init__(self):
+		super(Net, self).__init__()
+		self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
+		self.conv2 = nn.Conv2d(88, 20, kernel_size=5)
+		
+		self.incep1 = InceptionA(in_channels=10)
+		self.incep2 = InceptionA(in_channels=20)
+	
+		self.mp = nn.MaxPool2d(2)
+		self.fc = nn.Linear(1408, 10)
+	
+	def forward(self, x):
+		in_size = x.size(0)
+		x = F.relu(self.mp(self.conv1(x)))
+		x = self.incep1(x)
+		x = F.relu(self.mp(self.conv2(x)))
+		x = self.incep2(x)
+		x = x.view(in_size, -1)
+		x = self.fc(x)
+		return x
+```
+
+> [!note] 线性层维度
+> 上述的模块之间只显式规定了通道数的变化，而没有明确描述图像尺寸，而最后的线性层中需要指定输入维度的大小。可以通过随机初始化输入跑一遍不带线性层的网络，看最终的输出维度（或者 error 中的提示）可以确定线性层的输入维度。
+
+以上的网络结构可能比较简单，引入更多的 Interception 模块可能达到更好的效果。
+
+
+### ResNet
+
