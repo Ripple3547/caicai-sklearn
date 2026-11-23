@@ -426,7 +426,7 @@ outputs = [branch1x1, branch5x5, branch3x3, branch_pool]
 return torch.cat(outputs, dim=1)
 ```
 
-据此，以下是单个 Interception 模块的定义
+据此，以下是单个 Inception 模块的定义
 ```py
 class InceptionA(nn.Module):
 	def __init__(self, in_channels):
@@ -460,7 +460,7 @@ class InceptionA(nn.Module):
 
 
 ---
-以下网络引入了两个 Interception 模块：
+以下网络引入了两个 Inception 模块：
 ```py
 class Net(nn.Module):
 	def __init__(self):
@@ -488,8 +488,495 @@ class Net(nn.Module):
 > [!note] 线性层维度
 > 上述的模块之间只显式规定了通道数的变化，而没有明确描述图像尺寸，而最后的线性层中需要指定输入维度的大小。可以通过随机初始化输入跑一遍不带线性层的网络，看最终的输出维度（或者 error 中的提示）可以确定线性层的输入维度。
 
-以上的网络结构可能比较简单，引入更多的 Interception 模块可能达到更好的效果。
+以上的网络结构可能比较简单，引入更多的 Inception 模块可能达到更好的效果。
 
 
 ### ResNet
+ResNet 可以解决梯度消失的问题，输入经过权重层、激活层、权重层后得到 $F(x)$，再加上输入，即 $H(x) = F(x) + x$，再经过激活层得到输出。从输入 $x$ 到输出之间的连接也称为 **shortcut 分支**（捷径分支）。
 
+由于涉及 $F(x)$ 和 $x$ 两个张量的相加，因此需要确保维度的一致（通道数、长和宽）。卷积层可能包含**下采样**的操作，通道数和空间都改变，因此在捷径分支中可通过 `1x1 Conv` 操作调整 $x$ 的维度（卷积核数量控制通道数、stride 控制形状）
+```py
+class ResidualBlock(nn.Module):
+	def __init__(self, channels):
+		super(ResidualBlock, self).__init__()
+		self.channels = channels
+		self.conv1 = nn.Conv2d(channels, channels, 		kernel_size=3, padding=1)
+		
+		self.conv2 = nn.Conv2d(channels, channels, 		kernel_size=3, padding=1)
+	def forward(self, x):
+		y = F.relu(self.conv1(x))
+		y = self.conv2(y)
+		return F.relu(x + y)
+```
+
+---
+![[深入理解pytorch-03.webp]]
+
+```py
+class Net(nn.Module):
+	def __init__(self):
+		super(Net, self).__init__()
+		self.conv1 = nn.Conv2d(1, 16, kernel_size=5)
+		self.conv2 = nn.Conv2d(16, 32, kernel_size=5)
+		self.mp = nn.MaxPool2d(2)
+		self.rblock1 = ResidualBlock(16)
+		self.rblock2 = ResidualBlock(32)
+		self.fc = nn.Linear(512, 10)
+	def forward(self, x):
+		in_size = x.size(0)
+		x = self.mp(F.relu(self.conv1(x)))
+		x = self.rblock1(x)
+		x = self.mp(F.relu(self.conv2(x)))
+		x = self.rblock2(x)
+		x = x.view(in_size, -1)
+		x = self.fc(x)
+		return x
+```
+
+不同的 Residual 设计：https://arxiv.org/abs/1603.05027
+Dense Net：https://arxiv.org/abs/1608.06993
+
+
+---
+### 后续学习
+1. 理论学习：《深度学习》相关理论性强的书
+2. 阅读 Pytorch 文档：通读 api, reference 等，增强复现能力
+3. 复现经典工作：读代码、写代码，下载后跑通不等于复现。
+4. 选择领域，扩充视野，积累经验，掌握套路
+
+
+
+## 循环神经网络
+CNN 中通过卷积核的移动得到输出，权重得到复用；而全连接网络中两个线性层之间的每个单元都包含权重，因此包含的参数会更多。
+
+RNN 专门处理序列类型的数据，并且也实现了权重共享。每个 RNN Cell 的输出和新的输入会再次进入 RNN Cell 不断循环，在序列计算中权重共享。因此实际上一个 RNN Cell 被反复用于计算。
+
+输入为：
+- `hidden`：初始化的 $h_{0}$，代表先验
+- 输入序列 $\{ x_{t} \}$ 代表按时间变化的输入
+
+### 循环细节
+每一个时间步，在一个 RNN Cell 内，$x_{t}$ 和 hidden $h_{t-1}$ 分别经过线性层变换后相加，经过激活函数（一般是 $\tanh$）后得到 $h_{t}$，即
+$$
+h_{t} = \tanh (W_{hh}h_{t-1} + b_{hh} + W_{ih}x_{t} + b_{ih})
+$$
+矩阵运算等价于
+$$
+W_{1} h + W_{2}x = \begin{bmatrix}
+W_{1}  & W_{2}
+\end{bmatrix} \begin{bmatrix}
+h \\
+x
+\end{bmatrix}
+$$
+### Pytorch 中的两种实现方式
+#### RNN Cell
+```py
+cell = torch.nn.RNNCell(input_size=input_size, hidden_size=hidden_size)
+
+hidden = cell(input, hidden)
+```
+![[深入理解pytorch-04.webp]]
+维度关系为：
+- `input.shape=(batch, input_size)`
+- `hidden.shape=(batch, hidden_size)`
+- 数据集的维度应为：`dataset.shape=(seqLen, batch, input_size)`
+
+示例过程：
+```py
+dataset = torch.randn(seq_len, batch_size, input_size)
+hidden = torch.zeros(batch_size, hidden_size)
+
+for idx, input in enumerate(dataset):
+	hidden = cell(input, hidden)
+```
+
+以上的方式通过定义单个 RNN Cell，再手动实现循环来构造网络。
+
+#### RNN
+```py
+cell = torch.nn.RNN(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers)
+
+out, hidden = cell(inputs, hidden)
+```
+ 
+多层的 RNN 在计算时可以看作一个二维的计算网络， $t$ 时刻某层的 hidden $h_{t}^{(l)}$ 接受的输入为：
+- 当前时刻的前一个 hidden $h_{t}^{(l-1)}$ 
+- 前一时刻的同层 hidden $h_{t-1}^{(l)}$ 
+
+$$
+h_t^{(l)} = \tanh\left(W_{ih}^{(l)}\, a_t^{(l)} + W_{hh}^{(l)}\, h_{t-1}^{(l)} + b^{(l)}\right)
+$$
+其中：
+- 若 $l = 0$，则 $a_{t}^{(0)} =x_{t}$ ，且形状为 `(batch, input_size)`
+- 若 $l \geqslant 1$，则 $a_{t}^{(l)} = h_{t}^{(l-1)}$，且形状为 `(batch, hidden_size)`
+- 同时 $W_{ih}^{(l)}$，形状为 `(hidden_size, in_l)`， `in_0 = input_size, in_l>=1 = hidden_size`
+
+输出中
+- `out` 为 $h_{1}, \cdots, h_{N}$（**最后一层**的输出序列）即值包含最顶层的输出，不包含中间层。维度 `out.shape=(seqSize, batch, input_size)`
+- `hidden` 为 $h_{N}$（**每层**在最后时间步的 hidden）维度 `hidden.shape=(numLayers, batch, hidden_size)`
+
+因此有固定关系：
+- 单层 RNN 时：`output[-1] == h_n[0]`
+- 多层 RNN 时：`output[-1] == h_n[-1]`
+
+以上情况都不考虑双向 RNN。
+
+##### `batch_first`
+设为 `True` 时，维度会设为先 `batch` 后 `seqLen` 即：`(batch, seqLen, input_size)`
+
+### 案例
+```py
+import torch
+input_size = 4
+hidden_size = 4
+batch_size = 1
+
+idx2char = ['e', 'h', 'l', 'o']
+x_data = [1, 0, 2, 2, 3]
+y_data = [3, 1, 2, 3, 2]
+
+one_hot_lookup = [[1, 0, 0, 0],
+[0, 1, 0, 0],
+[0, 0, 1, 0],
+[0, 0, 0, 1]]
+
+x_one_hot = [one_hot_lookup[x] for x in x_data]
+
+# (seqLen, batch, input_size)
+inputs = torch.Tensor(x_one_hot).view(-1, batch_size, input_size)
+# (seqLen, 1)
+labels = torch.LongTensor(y_data).view(-1, 1)
+```
+
+
+#### 使用 RNN Cell
+```py
+class Model(torch.nn.Module):
+	def __init__(self, input_size, hidden_size, batch_size):
+		super(Model, self).__init
+		self.batch_size = batch_size
+		self.input_size = input_size
+		self.hidden_size = hidden_size
+		self.rnncell = torch.nn.RNNCell(input_size=self.input_size, hidden_size=self.hidden_size)
+		
+	def forward(self, input, hidden):
+		hidden = self.rnncell(input, hidden)
+		return hidden
+	
+	def init_hidden(self):
+		return torch.zeros(self.batch_size, self.hidden_size)
+
+net = Model(input_size, hidden_size, batch_size)
+```
+
+
+##### 训练
+```py
+criterion = torch.nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
+```
+
+
+```py
+for epoch in range(15):
+	loss = 0
+	optimizer.zero_grad()
+	hidden = net.init_hidden()
+	print('Predicted string: ', end='')
+	for input, label in zip(inputs, labels):
+		hidden = net(input, hidden)
+		loss += criterion(hidden, label)
+		_, idx = hidden.max(dim=1)
+		print(idx2char[idx.item()], end='')
+	loss.backward()
+	optimizer.step()
+	print(', Epoch [%d/15] loss=%.4f' % (epoch+1, loss.item()))
+```
+
+#### 使用 RNN
+```py
+class Model(torch.nn.Module):
+	def __init__(self, input_size, hidden_size, batch_size, num_layers=1):
+		super(Model, self).__init__()
+		self.num_layers = num_layers
+		self.batch_size = batch_size
+		self.input_size = input_size
+		self.hidden_size = hidden_size
+		self.rnn = torch.nn.RNN(input_size=self.input_size, hidden_size=self.hidden_size, 		num_layers=num_layers)
+		
+	def forward(self, input):
+		hidden = torch.zeros(self.num_layers,
+							 self.batch_size,
+							 self.hidden_size)
+		out, _ = self.rnn(input, hidden)
+		# (seqLen × batch, hidden_size)
+		return out.view(-1, self.hidden_size)
+
+net = Model(input_size, hidden_size, batch_size, num_layers)
+```
+
+##### 数据改变
+```py
+input_size = 4
+hidden_size = 4
+num_layers = 1
+batch_size = 1
+seq_len = 5
+
+idx2char = ['e', 'h', 'l', 'o']
+x_data = [1, 0, 2, 2, 3]
+y_data = [3, 1, 2, 3, 2]
+one_hot_lookup = [[1, 0, 0, 0],
+[0, 1, 0, 0],
+[0, 0, 1, 0],
+[0, 0, 0, 1]]
+x_one_hot = [one_hot_lookup[x] for x in x_data]
+
+# (seqLen, batch, hidden_size)
+inputs = torch.Tensor(x_one_hot).view(seq_len, batch_size, input_size)
+# (seqLen x batch, 1) 
+labels = torch.LongTensor(y_data)
+```
+
+##### 训练
+```py
+criterion = torch.nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(net.parameters(), lr=0.05)
+
+for epoch in range(15):
+	optimizer.zero_grad()
+	outputs = net(inputs)
+	loss = criterion(outputs, labels)
+	loss.backward()
+	optimizer.step()
+	
+	_, idx = outputs.max(dim=1)
+	idx = idx.data.numpy()
+	print('Predicted: ', ''.join([idx2char[x] for x in idx]), end='')
+	print(', Epoch [%d/15] loss = %.3f' % (epoch + 1, loss.item()))
+```
+
+#### embedding
+one-hot 编码的缺点：
+- 维度高，需要为词表中每个词分配一个维度
+- 每个向量分布在坐标轴上，空间稀疏
+- 硬编码
+
+EMBEDDING 表示：
+- 低维
+- 稠密
+- 可学习
+
+通过 embedding 可以将高维的 one-hot 向量映射到低维的 embedding 向量表示。RNN 中可在最后一层添加一个线性层来调整维度。
+
+```py
+class torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=None, max_norm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False, _weight=None, _freeze=False, device=None, dtype=None)
+```
+- `num_embeddings`：输入向量的维度
+- `embedding_dim`：embedding 向量的维度。
+
+在输出中，形状为 `(*, embedding_dim)`（ `*` 的内容可以是 `seqLen x batch`），在输入后面增加一个维度用于 embedding 表示.
+
+同理，`torch.nn.Linear` 的输入和输出关系为 `(N, *, in_features)` 和 `(N, *, out_features)`
+
+##### `CrossEntropyLoss` 输入参数解析
+常见情况为 2D 输入：
+- `input.shape=(N,C)`：N 个样本，一共 C 类候选
+- `target.shape=N`：每个样本一个整数的类别索引
+
+
+高维情况：
+- `input.shape=(N, C, d1, d2, ...)`：类别所在维度为 dim=1
+- `target.shape=(N, d1, d2, ...)`
+
+对 `(d1, d2, ...)` 独立计算，然后对整个 batch 和所有 `(d1, d2, ...)` 元素求平均计算交叉熵：
+- 语义分割：`logits: [2, 5, 8, 8]` 输入 2 张图像，类别数为 5，图像大小 8x8。计算交叉熵时，对该批次样本所有像素求平均。
+- 词性标注：`RNN输出: [N, L, C]`，`标签: [N, L]`，共 L 个时间步，每步 C 类。需要转置让输出符合输入格式要求：
+```py
+# [N, L, C]
+output = rnn(x)
+# [N, C, L] vs [N, L]
+loss = nn.CrossEntropyLoss()(output.transpose(1, 2), tags)
+```
+
+添加了 embedding 和 fc 的模型：
+```py
+# parameters
+num_class = 4
+input_size = 4
+hidden_size = 8
+embedding_size = 10
+num_layers = 2
+batch_size = 1
+seq_len = 5
+
+class Model(torch.nn.Module):
+	def __init__(self):
+		super(Model, self).__init__()
+		self.emb = torch.nn.Embedding(input_size, embedding_size)
+		self.rnn = torch.nn.RNN(input_size=embedding_size, 		hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
+		self.fc = torch.nn.Linear(hidden_size, num_class)
+		
+	def forward(self, x):
+		hidden = torch.zeros(num_layers, x.size(0), hidden_size)
+		x = self.emb(x) # (batch, seqLen, embeddingSize)
+		x, _ = self.rnn(x, hidden)
+		x = self.fc(x)
+		return x.view(-1, num_class)
+```
+
+
+---
+### LSTM
+LSTM 比 RNN 效果更好，但时间复杂度高。
+[[04 To Learn More#Long Short-term Memory（LSTM）]]
+
+
+### GRU
+GRU 是 LSTM 和 RNN 的折中
+![[深入理解pytorch-05.webp]]
+
+
+## RNN 进阶
+导包
+```py
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+import gzip
+import csv
+import time
+import math
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pack_sequence, pad_packed_sequence
+```
+
+构建数据集：
+```py
+class NameDataset(Dataset):
+    def __init__(self,is_train_set=True): #is_train_set 指定是否是训练集
+        filename = 'names_train.csv.gz' if is_train_set else 'names_test.csv.gz'
+        with gzip.open(filename,'rt') as f:#读取数据集
+            reader = csv.reader(f)
+            rows = list(reader)#读取每行数据，最终返回的结果为元组(name,country)形式
+        self.names = [row[0] for row in rows]#从rows中去除第0个元素，也就是name
+        self.len = len(self.names)#记录一下样本的数量
+        self.countries = [row[1] for row in rows]
+        self.country_list = list(sorted(set(self.countries)))#同样，获取country信息，将来作为names的标签进行使用
+        """
+        set(self.countries) #将列表变成一个集合，因为集合里面不重复，也就是去重
+        sorted(set(self.countries)) #排序
+        list(sorted(set(self.countries))) #最后变成一个列表形式
+        """
+        
+        self.country_dict = self.getCounrtyDict()#此时的列表中仍是英文名字，需要通过词典转换为序列索引
+        self.country_num = len(self.country_list)
+    
+    
+    def __getitem__(self,index):
+        return self.names[index],self.country_dict[self.countries[index]]
+        """
+        self.names[index] #拿到姓名
+        self.countries[index] #拿到国籍
+        self.country_dict[self.countries[index]] #根据国籍，从字典中获取对应的索引
+        countries(key)和index(value) 相当于字典中的键值对
+        """    
+    
+  
+    def __len__(self):
+        return self.len
+    
+    
+    def getCounrtyDict(self):
+        country_dict = dict()#定义一个空字典
+        for idx,country_name in enumerate(self.country_list,0):#遍历
+            country_dict[country_name] = idx#构造键值对
+        return country_dict#返回对应的字典
+    
+    
+    def idx2country(self,index):#根据索引，返回国籍的字符串
+        return self.country_list[index]#例如输入的是名字，得到分类是9，根据9，来返回对应的字符串，即所属的国籍
+    
+    def getCountriesNum(self):#看下到底有多少个国籍
+        return self.country_num#返回国籍数量
+
+```
+
+数据准备：
+```py
+hidden_size = 100#隐藏层是100维度
+batch_size = 256#每批256个姓名样本
+n_layer = 2#GRU使用了2层
+n_epochs = 100#训练100次
+n_chars = 128#因为ASCII共128个，故使用张量128来进行表示输入样本
+use_gpu = False#不使用GPU
+
+trainset = NameDataset(is_train_set=True)
+trainloader = DataLoader(trainset,batch_size=batch_size,shuffle=True)
+testset = NameDataset(is_train_set=False)
+testloader = DataLoader(testset,batch_size=batch_size,shuffle=False)
+
+n_country = trainset.getCountriesNum()#决定模型最终的输出维度大小
+```
+
+
+模型设计：
+```py
+class RNNClassifier(torch.nn.Module):
+    def __init__(self,input_size,hidden_size,output_size,n_layers=1,bidirectional=True):
+        """
+        GRU使用：hidden_size、n_layers、bidirectional
+        embedd嵌入层使用：input_sizeinput_size、hidden_size
+        
+        """
+        super(RNNClassifier,self).__init__()
+        self.hidden_size = hidden_size
+        self.n_layers = n_layers
+        self.n_directions = 2 if bidirectional else 1#RNN是单向还是双向，单向是1，双向是2
+        
+        self.embedding = torch.nn.Embedding(input_size,hidden_size)
+        """
+        embedding层
+        输入维度：(seqLen,batchsize)  
+        输出维度：(seqLen,batchsize,hiddensize)
+       
+        """
+        self.gru = torch.nn.GRU(hidden_size,hidden_size,n_layers,bidirectional=bidirectional)#bidirectional单向还是双向循环神经网络
+        """
+        GRU
+        输入维度：(seqLen,batchsize,hiddensize)
+        输出维度：(seqLen,batchsize,hiddensize * nDirections)
+        
+        """
+        
+        self.fc = torch.nn.Linear(hidden_size*self.n_directions,output_size)
+        
+    def _init_hidden(self,batch_size):#创建全零的初始的隐藏层
+        hidden = torch.zeros(self.n_layers * self.n_directions,batch_size,self.hidden_size)
+        return create_tensor(hidden)
+    
+    def forward(self,input,seq_lengths):
+        input = input.t()#矩阵的转置，transpose，将原来的(batch×seqlen)转换成(seqlen×batch)
+        batch_size = input.size(1)#保留batchsize
+        
+        hidden = self._init_hidden(batch_size)
+        embedding = self.embedding(input)#embedding维度：(seqLen,batchsize,hiddensize)
+        
+        gru_input = pack_padded_sequence(embedding,seq_lengths)#gru_input维度为：(seqLen,batchsize,hiddensize)
+        
+        output,hidden = self.gru(gru_input,hidden)
+        if self.n_directions == 2:
+            hidden_cat = torch.cat([hidden[-1],hidden[-2]],dim=1)
+        else:
+            hidden_cat = hidden[-1]
+        fc_output = self.fc(hidden_cat)
+        return fc_output
+```
+- `pack_padded_sequence`：用于加速计算，输入序列长短不一，末尾补 0 实际上可以简化计算，需要两个信息：`embedding` 模型和 `seq_lengths` 输入序列长度
+
+
+要点：
+- 双向 RNN：分别前向和后向对序列进行一次计算有两批 output 输出，把前向和后向对应位置的 $h_{i}^{\{ b,f \}}$ 拼接得到 $h_{i}$ 作为 output。前向和后向分别得到的最终结果作为 $hidden = [h_{N}^{f}, h_{N}^{b}]$.
+![[深入理解pytorch-06.webp]]
