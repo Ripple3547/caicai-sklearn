@@ -839,7 +839,7 @@ GRU 是 LSTM 和 RNN 的折中
 
 
 ## RNN 进阶
-导包
+### 导包
 ```py
 import matplotlib.pyplot as plt
 import numpy as np
@@ -853,7 +853,7 @@ import math
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pack_sequence, pad_packed_sequence
 ```
 
-构建数据集：
+### 构建数据集
 ```py
 class NameDataset(Dataset):
     def __init__(self,is_train_set=True): #is_train_set 指定是否是训练集
@@ -904,7 +904,7 @@ class NameDataset(Dataset):
 
 ```
 
-数据准备：
+### 数据准备
 ```py
 hidden_size = 100#隐藏层是100维度
 batch_size = 256#每批256个姓名样本
@@ -922,7 +922,7 @@ n_country = trainset.getCountriesNum()#决定模型最终的输出维度大小
 ```
 
 
-模型设计：
+### 模型设计
 ```py
 class RNNClassifier(torch.nn.Module):
     def __init__(self,input_size,hidden_size,output_size,n_layers=1,bidirectional=True):
@@ -974,9 +974,274 @@ class RNNClassifier(torch.nn.Module):
         fc_output = self.fc(hidden_cat)
         return fc_output
 ```
-- `pack_padded_sequence`：用于加速计算，输入序列长短不一，末尾补 0 实际上可以简化计算，需要两个信息：`embedding` 模型和 `seq_lengths` 输入序列长度
+
+### 数据处理：姓名编码、索引和长度的处理
+```py
+def name2list(name):#将每个姓名都转化为欸一个列表
+    arr = [ord(c) for c in name]
+    return arr,len(arr)#返回一个元组，一个是列表本身，一个是列表长度
+
+def create_tensor(tensor):
+    if use_gpu:
+        device = torch.device('cuda:0')
+        tensor = tensor.to(device)
+        
+    return tensor
+
+def make_tensors(names,countries):
+    sequences_and_lengths = [name2list(name) for name in names]
+    name_sequences = [s1[0] for s1 in sequences_and_lengths]
+    seq_lengths = torch.LongTensor([s1[1] for s1 in sequences_and_lengths])
+    countries = countries.long()
+    
+    seq_tensor = torch.zeros(len(name_sequences),seq_lengths.max()).long()#全零
+    for idx,(seq,seq_len) in enumerate(zip(name_sequences,seq_lengths),0):#把值贴上去
+        seq_tensor[idx,:seq_len] = torch.LongTensor(seq)
+    
+    seq_lengths, perm_idx = seq_lengths.sort(dim=0,descending=True)#按照序列的长度进行排序
+    seq_tensor = seq_tensor[perm_idx]
+    countries = countries[perm_idx]
+    
+    return create_tensor(seq_tensor),create_tensor(seq_lengths),create_tensor(countries)
+```
+
+### 训练函数
+```py
+def trainModel():
+    total_loss = 0
+    for i,(names,countries) in enumerate(trainloader,1):
+        inputs,seq_lengths,target = make_tensors(names,countries)
+        output = classifier(inputs,seq_lengths)
+        loss = lossf(output,target)
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
+        
+        total_loss += loss.item()
+        if i%10 == 0:
+            print(f'[{time_since(start)}] Epoch {epoch}',end='')
+            print(f'[{i * len(inputs)}/{len(trainset)}]',end='')
+            print(f'loss={total_loss / (i*len(inputs))}')
+    return total_loss
+```
+
+### 测试函数
+```py
+def testModel():
+    correct = 0
+    total = len(testset)
+    print("evaluating trained model ...")
+    with torch.no_grad():
+        for i,(names,countries) in enumerate(testloader,1):
+            inputs,seq_lengths,target = make_tensors(names,countries)
+            output = classifier(inputs,seq_lengths)
+            pred = output.max(dim=1,keepdim=True)[1]
+            correct += pred.eq(target.view_as(pred)).sum().item()
+        
+        percent = '%.2f'%(100*correct/total)
+        print(f'Test set: Accuracy {correct}/{total} {percent}%')
+    return correct/total
+```
+
+### 计时函数
+```py
+def time_since(since):
+    s = time.time() - since
+    # time.time() 返回的是当前时间，秒为单位
+    # s / 60 变成分钟
+    m = math.floor(s / 60)
+    s -= m * 60
+    return "%dm %ds"%(m,s)
+```
+
+### 主函数
+```py
+if __name__ == '__main__':
+    classifier = RNNClassifier(n_chars,hidden_size,n_country,n_layer) #创建分类器
+    """
+    n_chars 字符数量，输入的是英文字母，需要转换为one-hot向量，也就是整个字母表一共有多少个元素
+    hidden_size 隐藏层数量，GRU将来输出的隐层的维度
+    n_country 一共有多少个分类，也就是一共有多少个国家
+    n_layer 使用几层GRU
+    """
+    if use_gpu: #是否使用GPU
+        device = torch.device('cuda:0')
+        classifier.to(device)
+    
+    lossf = torch.nn.CrossEntropyLoss() #分类问题，使用交叉熵损失函数就够了
+    optim = torch.optim.Adam(classifier.parameters(),lr=0.00001) #优化器使用adam
+    
+    start = time.time() #计时，看看训练的时间有多长，距离开始训练已经过去了多少时间
+    print("Training for %d epochs..." %n_epochs)
+    acc_list = []
+    for epoch in range(1,n_epochs+1):
+        trainModel() #训练和测试进行封装到两个函数中
+        acc = testModel()
+        acc_list.append(acc) #测试的结果添加到列表中，方便后续的绘图操作
+```
 
 
-要点：
+### 要点
+- 序列长度补齐：按照最长的序列对每个样本长度补齐，用 0 填充。代码中的做法是先生成一个全 0 的张量，再把样本填入对应位置。代码中对于排序的做法
+- `pack_padded_sequence`：用于加速计算，输入序列长短不一，末尾补 0 实际上可以简化计算，需要两个信息：嵌入向量序列 `embedding` 和 `seq_lengths` 输入序列**真实**长度（即未填充 0 的长度，填充 0 后做 embedding 长度一致），该函数会依次做以下的工作：
+	1. 先按 `seq_lengths` 从长到短重排该 batch 的数据，并记录和原始序列的对应关系
+	2. 按时间步压缩有效数据：每个时间步只取前 `batch_sizes[t]` 个样本对应位置。若用 B, T, D 分别表示 batch 大小、样本最长长度和嵌入维度，则维度变化为 `(B, T, D) -> (sum(seq_lengths), D)`。最终 `batch_sizes` 中记录了每个时间步中还有多少个样本还在算，也就是 `batch_sizes[t]` 表示 batch 中长度不超过 t 的样本个数。
+	3. 初始化若干 `hidden[i]`，数量等于样本数。每个时间步按照 `batch_sizes[t]` 从**压缩后 tensor** 中取出对应区间内样本更新对应的 `hidden[i]`。因此每个 `hidden` 的更新次数严格等于样本的序列长度，填充 0 不会参与计算。
+	- 返回 `PackedSequence`，可以作为 gru 的输入。
+- 真正用作下一层输入的是 `hidden`，若为双向网络还须拼接两个 hidden 张量。
+
+
+> [!note] `batch_sizes`
+> 若嵌入向量序列为：
+> ```text
+>         t0   t1   t2   t3   t4
+Lin   [  4,   3,   5,   0,   0]
+Zhang [ 12,  11,   1,   5,   6]
+Sato  [  9,   1,  10,   7,   0]
+Hu    [ 11,  14,   0,   0,   0]
+> ```
+> 按照长度重排：
+> ```text
+> 排序后位置:  0        1       2       3
+名字:       Zhang    Sato    Lin     Hu
+长度:        5        4       3       2
+> ```
+> 压缩过程：
+> ```text
+> t=0: 4 个全在（长度都 ≥1）
+t=1: 4 个全在（长度都 ≥2）
+t=2: 3 个（Zhang,Sato,Lin；Hu 长 2 已结束）
+t=3: 2 个（Zhang,Sato；Lin 长 3 已结束）
+t=4: 1 个（仅 Zhang）
+> ```
+> 可得 `batch_sizes = [4, 4, 3, 2, 1]`
+
 - 双向 RNN：分别前向和后向对序列进行一次计算有两批 output 输出，把前向和后向对应位置的 $h_{i}^{\{ b,f \}}$ 拼接得到 $h_{i}$ 作为 output。前向和后向分别得到的最终结果作为 $hidden = [h_{N}^{f}, h_{N}^{b}]$.
 ![[深入理解pytorch-06.webp]]
+
+
+### 拓展：古诗生成器
+#### 一、数据准备与处理
+**1. 收集语料**
+获取古诗数据集（如《全唐诗》、宋词语料），每首诗通常包含标题、作者、正文。清洗时去掉注释、异体字、标点不统一的内容，保留正文。可以按诗体（五言绝句、七言律诗）分别建库，也可以混合。
+
+**2. 统一格式**
+把每首诗转成一个字符序列。常见做法是：
+- 正文按字符切分，句间用逗号、句号或换行符分隔，诗与诗之间插入特殊分隔符（如 `<eos>` 表示一首结束）
+- 如果需要控制诗体，可以在开头加条件标记（如 `<5言>`、`<7言>`）
+- 统一长度上限，过长截断、过短丢弃或单独处理
+
+**3. 建立词表**
+统计所有出现的字符（汉字 + 标点 + 特殊符号），按频率排序，建立"字符 → 整数索引"的映射。预留 `<pad>`、`<bos>`（开始）、`<eos>`（结束）、`<unk>`（未登录字）等特殊 token。词表通常几千到一万量级。
+
+**4. 构造训练样本**
+语言建模的标准做法是"用前 n 个字符预测第 n+1 个字符"：
+- 把整首诗的索引序列切成输入 `x = [c0, c1, ..., c_{T-1}]` 和目标 `y = [c1, c2, ..., c_T]`，即目标整体右移一位
+- 按固定窗口长度（如 64 或 128）滑动切段，得到大量定长或变长的训练片段
+- 如果按批次训练，用 `pad_sequence` 补齐变长序列，同时记录真实长度，供 `pack_padded_sequence` 使用
+
+**5. 构建 DataLoader**
+自定义 `collate_fn`：把一批序列补齐、转成张量、记录长度、按长度降序或交给 `pack_padded_sequence` 自动排序。训练时打乱，验证集不打乱。
+
+#### 二、模型设计
+**1. 整体结构**
+典型结构：`Embedding → GRU（可多层）→ Linear（映射回词表大小）`。
+
+- **Embedding**：字符索引 → 稠密向量，维度一般 128~512
+- **GRU**：1~2 层，隐藏维度 256~1024，`batch_first=True`
+- **输出层**：`Linear(H, V)`，对每个时间步输出词表上每个字符的分数（logits）
+- 可选：输出层与 Embedding 共享权重（weight tying），减少参数、提升效果
+- 可选：在 GRU 前加 dropout 防过拟合
+
+**2. 关键取舍**
+- 单向还是双向：生成任务必须是单向（不能看到未来），所以只用单向 GRU
+- 层数与维度：古诗语料不大，1~2 层、256~512 维通常够用，过大容易过拟合
+- 是否用 pack：变长批次用 pack 训练更高效，且 `h_n` 语义正确；但语言建模常用定长切段，也可以不 pack
+
+#### 三、训练过程
+**1. 损失函数**
+逐字符的交叉熵（`CrossEntropyLoss`）。把输出 reshape 成 `(B*T, V)`、目标 reshape 成 `(B*T,)` 后计算。如果用了 padding，需要设 `ignore_index=<pad>` 让填充位不参与损失。
+
+**2. 优化器与学习率**
+Adam 或 AdamW，学习率 1e-3 量级，配合学习率衰减或 warmup。梯度裁剪（clip norm 1.0 左右）对 RNN 很重要，防止梯度爆炸。
+
+**3. 训练循环**
+每个 epoch：
+- 前向：输入 `x` → Embedding → GRU → Linear → logits
+- 算 loss（mask 掉 padding）
+- 反向传播、梯度裁剪、更新参数
+- 记录训练 loss 和困惑度（perplexity）
+
+**4. 验证与保存**
+- 每个 epoch 在验证集上算 loss 和 perplexity
+- 定期用当前模型生成几首诗，人工检查质量（loss 低不代表诗好）
+- 保存验证 loss 最低或生成质量最好的 checkpoint
+- 监控过拟合：训练 loss 持续降、验证 loss 回升时早停
+
+**5. 常见问题**
+- 梯度爆炸：梯度裁剪 + 合适学习率
+- 过拟合：dropout、减小模型、数据增强（按诗体筛选）
+- 模式崩塌（总生成同一首）：提高温度采样、增加数据多样性
+- 训练慢：pack 变长序列、减小窗口长度、混合精度
+
+#### 四、训练好之后如何应用
+**1. 加载模型**
+恢复 checkpoint 的参数和词表映射（词表必须和训练时完全一致，否则索引错位）。
+
+**2. 生成方式：自回归逐字生成**
+- **给定开头（续写）**：把用户输入的前几个字作为初始序列，送进模型，取最后一个时间步的输出，采样下一个字，把它拼回序列，再送进模型，循环直到遇到 `<eos>` 或达到长度上限
+- **无条件生成**：从 `<bos>` 开始，逐步采样
+- **控制格式**：如果训练时加了条件标记，生成时把对应标记放在开头，可控制五言/七言
+
+**3. 采样策略**
+- **贪心**：每步取概率最大的字，结果确定但容易重复、呆板
+- **随机采样**：按概率分布采样，多样性好但可能不通顺
+- **温度采样**：logits 除以温度 T，T<1 更保守、T>1 更随机，常用 0.7~1.0
+- **Top-k 采样**：只在概率最高的 k 个字里采样，平衡质量和多样性
+- **Top-p（nucleus）采样**：在累积概率达到 p 的最小集合里采样，自适应控制候选集
+- **束搜索**：保留多条候选路径，适合追求最优输出，但多样性差
+
+**4. 后处理**
+- 按标点或字数切句，检查是否符合诗体（每句字数、句数）
+- 过滤含 `<unk>`、重复字过多的结果
+- 可加规则约束（如押韵检查）做二次筛选或重采样
+
+**5. 部署形态**
+- 命令行/脚本：输入开头，输出续写
+- Web 服务：模型常驻内存，接口接收 prompt 返回生成结果
+- 批量生成：给定主题词或格式，批量产出候选诗供筛选
+
+#### 五、模型扩展方向
+**1. 结构层面**
+- **多层 GRU / LSTM**：增强表达能力，但收益递减且更慢
+- **双向结构**：生成任务不能用，但可用于"给上句填下句"之外的判别任务
+- **注意力机制**：在解码时对输入做 attention，适合"给定主题/关键词生成"这类条件生成
+- **Transformer / GPT 式结构**：用自注意力替代 RNN，训练更并行、长程依赖更好，是当前主流替代方案
+- **变分自编码器（VAE）**：引入隐变量，提升生成多样性
+- **GAN 框架**：用判别器引导生成质量，但训练不稳定
+
+**2. 条件控制**
+- **格式条件**：五言/七言、绝句/律诗、平仄格律作为条件输入
+- **主题/关键词条件**：给定"明月""思乡"等关键词，生成相关诗
+- **风格条件**：按诗人（李白/杜甫风格）或朝代做条件
+- **押韵约束**：在采样时对韵脚位置限制候选字集合
+
+**3. 训练策略**
+- **预训练 + 微调**：先在大规模古诗语料上预训练，再在特定诗体或风格上微调
+- **课程学习**：先短诗后长诗，先简单后复杂
+- **强化学习**：用格律合规性、押韵、通顺度做奖励，用策略梯度优化生成质量
+- **数据增强**：按诗体筛选、同义替换、回译（对古诗较难）
+
+**4. 评估与工程**
+- **自动指标**：困惑度、押韵合规率、格律合规率、重复率、与训练集的 n-gram 重合度（检测抄袭）
+- **人工评估**：通顺度、意境、是否符合主题
+- **推理加速**：KV cache（对 RNN 意义有限，对 Transformer 关键）、量化、蒸馏、批量化生成
+- **可控解码**：约束解码（constrained decoding），在每步屏蔽不合规的字
+
+**5. 任务扩展**
+- 从"续写"扩展到"给定标题生成全诗""给定上句对下句""诗转词""根据意境描述生成诗"
+- 多模态：给图片生成配诗
+- 交互式创作：人机协作，用户逐句修改、模型补全
+
+#### 六、一句话总结流程
+**收集并清洗古诗 → 字符级分词建词表 → 构造"前文预测后一字"的样本 → Embedding + GRU + Linear 建模 → 交叉熵 + 梯度裁剪训练 → 验证集选模型 → 自回归 + 温度/Top-k 采样生成 → 按诗体和押韵后处理 → 通过加条件、换结构、强化学习等方式扩展。**
